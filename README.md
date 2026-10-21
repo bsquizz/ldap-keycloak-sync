@@ -93,6 +93,13 @@ profile JSON:
 
 The tool performs a preflight check and refuses to run if `managedByLdapSync` isn't declared.
 
+> **GitOps / reconciled realms:** if the realm's config is managed declaratively (realm-import,
+> Keycloak Operator, Terraform, …), make these user-profile changes in that **source config**,
+> not via the Admin API/console. A reconciler will otherwise revert them — which not only
+> re-blocks the preflight but **strips the `managedByLdapSync` attribute off every user**, so the
+> disable-on-leave logic silently stops working until the next adopt. The same applies to any
+> mapped custom attribute (e.g. `rhatUUID`).
+
 ## Run locally (Kerberos)
 
 If `ldapsearch` already works on your machine (you hold a Kerberos ticket), use GSSAPI — no
