@@ -71,6 +71,25 @@ enabled**, and grant its service account only the `realm-management` roles `view
 A realm admin user (`client_id: admin-cli` + `username`/`password` + `user_realm_name: master`)
 also works, but is broader than needed.
 
+### Realm prerequisites (user profile)
+
+If the realm uses the **declarative user profile** (Keycloak's default) with
+`unmanagedAttributePolicy` unset, Keycloak **silently drops** any attribute that isn't declared
+in the profile. This tool writes custom attributes, so the profile must declare **every mapped
+custom attribute** (e.g. `rhatUUID`) **and the ownership marker `managedByLdapSync`** — otherwise
+the marker never persists and the disable-on-leave logic silently never fires.
+
+Declare them (admin-only is fine), e.g. via *Realm settings → User profile*, or add to the
+profile JSON:
+
+```json
+{ "name": "managedByLdapSync", "displayName": "Managed by LDAP sync",
+  "permissions": { "view": ["admin"], "edit": ["admin"] },
+  "group": "user-metadata", "multivalued": false }
+```
+
+The tool performs a preflight check and refuses to run if `managedByLdapSync` isn't declared.
+
 ## Run locally (Kerberos)
 
 If `ldapsearch` already works on your machine (you hold a Kerberos ticket), use GSSAPI — no

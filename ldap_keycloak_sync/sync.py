@@ -156,7 +156,29 @@ def connect_keycloak(cfg: dict):
         if getattr(e, "response_code", None) == 404:
             sys.exit(f"FATAL: realm '{kc['realm']}' not found in Keycloak")
         raise
+    _assert_marker_persists(admin)
     return admin
+
+
+def _assert_marker_persists(admin) -> None:
+    """Fail fast if the ownership marker would be silently dropped.
+
+    With the declarative user profile and `unmanagedAttributePolicy` unset, Keycloak discards
+    attributes that aren't declared -- which would quietly break disable-on-leave.
+    """
+    try:
+        profile = admin.get_realm_users_profile()
+    except Exception as e:  # noqa: BLE001 - don't block if the profile can't be read
+        log.warning("could not verify '%s' is declared in the user profile: %s", MARKER_ATTR, e)
+        return
+    declared = {a.get("name") for a in profile.get("attributes", [])}
+    if MARKER_ATTR in declared or profile.get("unmanagedAttributePolicy"):
+        return
+    sys.exit(
+        f"FATAL: realm user profile does not declare '{MARKER_ATTR}' and unmanaged attributes are "
+        f"disabled, so the ownership marker would be silently dropped. Declare '{MARKER_ATTR}' in "
+        f"the realm user profile (see README 'Realm prerequisites')."
+    )
 
 
 def fetch_keycloak_users(admin, page: int = 500) -> list:
@@ -211,29 +233,30 @@ def fetch_ldap_users(conn, cfg: dict) -> dict:
 def apply(admin, plan: dict, cfg_sync: dict, dry_run: bool) -> Counter:
     counts = Counter()
     prefix = "[dry-run] " if dry_run else ""
+    action = cfg_sync.get("leaver_action", "disable")
+
+    def _do(count_key: str, verb: str, username: str, fn):
+        # One bad record (e.g. a name that trips profile validation) must not abort a bulk run.
+        log.info("%s%s %s", prefix, verb, username)
+        if not dry_run:
+            try:
+                fn()
+            except Exception as e:  # noqa: BLE001 - deliberately resilient
+                counts["failed"] += 1
+                log.error("FAILED %s %s: %s", verb, username, e)
+                return
+        counts[count_key] += 1
 
     for rep in plan["creates"]:
-        counts["created"] += 1
-        log.info("%sCREATE %s", prefix, rep["username"])
-        if not dry_run:
-            admin.create_user(rep)
-
+        _do("created", "CREATE", rep["username"], lambda rep=rep: admin.create_user(rep))
     for rep in plan["updates"]:
-        counts["updated"] += 1
-        log.info("%sUPDATE %s", prefix, rep["username"])
-        if not dry_run:
-            admin.update_user(rep["id"], rep)
-
-    action = cfg_sync.get("leaver_action", "disable")
+        _do("updated", "UPDATE", rep["username"], lambda rep=rep: admin.update_user(rep["id"], rep))
     for user in plan["leavers"]:
-        counts["removed"] += 1
-        log.info("%s%s (out of scope) %s", "[dry-run] " if dry_run else "", action.upper(), user["username"])
-        if dry_run:
-            continue
         if action == "delete":
-            admin.delete_user(user["id"])
+            _do("removed", "DELETE", user["username"], lambda u=user: admin.delete_user(u["id"]))
         else:
-            admin.update_user(user["id"], {**user, "enabled": False})
+            _do("removed", "DISABLE", user["username"],
+                lambda u=user: admin.update_user(u["id"], {**u, "enabled": False}))
     return counts
 
 
@@ -252,7 +275,7 @@ def run(cfg: dict, dry_run: bool = False) -> int:
     )
     counts = apply(admin, plan, cfg["sync"], dry_run)
     log.info("done: %s", dict(counts))
-    return 0
+    return 1 if counts.get("failed") else 0
 
 
 def adopt_existing(cfg: dict, dry_run: bool = False) -> int:
