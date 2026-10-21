@@ -159,8 +159,8 @@ def connect_keycloak(cfg: dict):
     return admin
 
 
-def fetch_keycloak_users(admin) -> list:
-    users, first, page = [], 0, 100
+def fetch_keycloak_users(admin, page: int = 500) -> list:
+    users, first = [], 0
     while True:
         batch = admin.get_users(query={"first": first, "max": page})
         users.extend(batch)

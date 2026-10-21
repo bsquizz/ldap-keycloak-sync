@@ -121,6 +121,44 @@ pod, either bundle krb5 libs into the image (copy them from the builder stage) o
 runtime to a UBI base, then mount a keytab Secret and a `krb5.conf`. Simple bind is the
 default pod path.
 
+## Performance & scaling
+
+This realm is intended to hold **all company users** (tens of thousands). Measured against the
+live systems:
+
+- **LDAP** returns ~28,500 uids in <2s — negligible at any scale.
+- **Keycloak REST** round-trips are ~0.12s (read) / ~0.2s (write); no rate limiting observed.
+
+| Scope                      | Per-run list fetch | One-time initial import | Steady-state run |
+|----------------------------|--------------------|-------------------------|------------------|
+| ~1,000                     | ~0.3s              | ~3.5 min                | seconds          |
+| ~28,500 (whole company)    | ~9s                | **~95 min (≈1.5 h)**    | ~10–20s          |
+
+The sync is **sequential and idempotent** by design: each run writes only the users that
+actually changed, so steady-state runs stay cheap (~10–20s) even at full-company scale, and an
+interrupted run self-heals — the next run skips already-synced users and continues. No
+parallelization or resumability code is needed; the bottleneck is one-time, not recurring.
+
+At whole-company scale the job holds both user sets in memory (a few hundred MB); the CronJob
+requests a correspondingly higher memory limit.
+
+### Initial import
+
+The first run creates every in-scope user and takes ~1.5 h at whole-company scale. The default
+CronJob `activeDeadlineSeconds: 600` (10 min) would kill it mid-run. For the initial import,
+either:
+
+- **Run it once manually** (recommended) — locally or via `oc run` — then let the CronJob take
+  over steady-state:
+  ```bash
+  ldap-keycloak-sync --config config.yaml        # add --dry-run first to preview
+  ```
+- or **temporarily raise `activeDeadlineSeconds`** in `deploy/cronjob.yaml` for the first run,
+  then revert it.
+
+Because the sync is idempotent, even an interrupted import completes over successive cron runs
+(`concurrencyPolicy: Forbid` prevents overlap).
+
 ## Development
 
 ```bash

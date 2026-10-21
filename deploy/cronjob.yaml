@@ -11,6 +11,9 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
+      # Fits steady-state runs (~10-20s even at whole-company scale). The ONE-TIME initial
+      # import of all users takes ~1.5h and would be killed here -- run that import manually
+      # or raise this temporarily for the first run. See README "Initial import".
       activeDeadlineSeconds: 600
       template:
         spec:
@@ -41,7 +44,7 @@ spec:
                   memory: 128Mi
                 limits:
                   cpu: 500m
-                  memory: 256Mi
+                  memory: 512Mi    # holds both user sets in memory at whole-company scale
           volumes:
             - name: config
               configMap:
