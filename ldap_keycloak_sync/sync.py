@@ -43,7 +43,12 @@ def desired_user(ldap_attrs: dict, cfg_sync: dict) -> dict:
         if not vals:
             continue
         if target in TOP_LEVEL_FIELDS:
-            fields[target] = str(vals[0])
+            val = str(vals[0])
+            # Keycloak stores email (and username) lowercased; match that so unchanged users
+            # don't diff every run (LDAP often has mixed-case mail, e.g. First.Last@example.com).
+            if target in ("email", "username"):
+                val = val.lower()
+            fields[target] = val
         else:
             attrs[target] = [str(v) for v in vals]
 
@@ -220,13 +225,11 @@ def fetch_ldap_users(conn, cfg: dict) -> dict:
     ):
         if entry.get("type") != "searchResEntry":
             continue
-        attrs = entry["attributes"]
-        uids = attrs.get("uid") or []
-        if not uids:
+        rep = desired_user(entry["attributes"], cfg["sync"])
+        username = rep.get("username")  # already lowercased by desired_user (matches KC storage)
+        if not username:
             continue
-        username = str(uids[0] if isinstance(uids, list) else uids)
-        desired[username] = desired_user(attrs, cfg["sync"])
-        desired[username]["username"] = username
+        desired[username] = rep
     return desired
 
 

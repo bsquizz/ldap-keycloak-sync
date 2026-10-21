@@ -1,11 +1,14 @@
 """Unit tests for the pure reconcile logic (no network)."""
 
+import types
+
 from ldap_keycloak_sync.sync import (
     MARKER_ATTR,
     MARKER_VALUE,
     adopt_payload,
     desired_user,
     diff_update,
+    fetch_ldap_users,
     is_protected,
     partition,
 )
@@ -71,6 +74,23 @@ def test_diff_update_preserves_unmanaged_attributes():
     assert merged["attributes"][MARKER_ATTR] == MARKER_VALUE
 
 
+def test_email_lowercased_so_mixed_case_is_idempotent():
+    # LDAP mail often has mixed case (e.g. First.Last@example.com); Keycloak stores it lowercased.
+    attrs = _ldap()
+    attrs["mail"] = ["Jane.DOE@Example.com"]
+    desired = desired_user(attrs, CFG_SYNC)
+    assert desired["email"] == "jane.doe@example.com"
+    existing = {"id": "1", **desired, "email": "jane.doe@example.com"}
+    assert diff_update(existing, desired) is None  # no perpetual re-update
+
+
+def test_username_lowercased():
+    # Keycloak lowercases usernames; a mixed-case uid must map to the lowercase key or it
+    # mismatches the existing user (create-conflict + wrongful disable).
+    rep = desired_user(_ldap("MixedCase1"), CFG_SYNC)
+    assert rep["username"] == "mixedcase1"
+
+
 def test_diff_update_reenables_returning_user():
     desired = desired_user(_ldap(), CFG_SYNC)
     existing = {"id": "1", **desired, "enabled": False}
@@ -115,6 +135,23 @@ def test_protected_users_untouched():
                 "attributes": {MARKER_ATTR: MARKER_VALUE}}]
     plan = partition(desired, current, CFG_SYNC)
     assert plan == {"creates": [], "updates": [], "leavers": []}
+
+
+def _fake_ldap_conn(entries):
+    std = types.SimpleNamespace(paged_search=lambda **kw: iter(entries))
+    return types.SimpleNamespace(extend=types.SimpleNamespace(standard=std))
+
+
+def test_fetch_ldap_users_keys_by_lowercase_username():
+    cfg = {"ldap": {"search_base": "ou=x", "user_filter": "(uid=*)"}, "sync": CFG_SYNC}
+    entries = [
+        {"type": "searchResEntry", "attributes": _ldap("MixedCase1")},
+        {"type": "searchResRef"},  # non-entry rows are ignored
+    ]
+    desired = fetch_ldap_users(_fake_ldap_conn(entries), cfg)
+    assert set(desired) == {"mixedcase1"}
+    assert desired["mixedcase1"]["username"] == "mixedcase1"
+    assert desired["mixedcase1"]["attributes"]["rhatUUID"] == ["abc-123"]
 
 
 def test_adopt_payload():
