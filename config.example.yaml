@@ -1,0 +1,46 @@
+# ldap-keycloak-sync configuration (generic example).
+# Secret VALUES never live here -- ${VAR} is expanded from the environment (a Kubernetes
+# Secret in the pod, or exported vars locally). A referenced-but-unset var is a hard error.
+
+keycloak:
+  url: https://keycloak.example.com
+  realm: my-realm
+  # Recommended: a confidential client with a service account granted realm-management
+  # roles view-users + manage-users + query-users (least privilege).
+  client_id: ldap-sync
+  client_secret: ${KEYCLOAK_CLIENT_SECRET}
+  # Alternative to the service account -- a realm admin user:
+  # client_id: admin-cli
+  # username: ${KEYCLOAK_USERNAME}
+  # password: ${KEYCLOAK_PASSWORD}
+  # user_realm_name: master
+  verify: true                  # verify Keycloak TLS cert
+
+ldap:
+  url: ldaps://ldap.example.com:636
+  search_base: ou=users,dc=example,dc=com
+  # Which LDAP users belong in the realm. Narrow this to your authoritative group.
+  # (uid=*) alone imports everyone the bind account can see -- see README caveats.
+  user_filter: "(&(uid=*)(memberOf=cn=app-users,ou=groups,dc=example,dc=com))"
+  auth:
+    method: simple              # simple | gssapi
+    bind_dn: ${LDAP_BIND_DN}            # simple only
+    bind_password: ${LDAP_BIND_PASSWORD}  # simple only
+    # gssapi uses the ambient Kerberos ticket/keytab; omit bind_dn/bind_password.
+  verify: true                  # verify LDAP TLS cert
+
+sync:
+  # ldap_attr: keycloak_target  (source -> destination)
+  # A target in {username, firstName, lastName, email, emailVerified, enabled} is a
+  # top-level field; anything else becomes a custom attribute (e.g. rhatUUID).
+  mappings:
+    uid: username               # required join key
+    givenName: firstName
+    sn: lastName
+    mail: email
+    rhatUUID: rhatUUID
+  email_verified: true          # set emailVerified=true for synced users with an email
+  exclude_users:                # never created/updated/disabled/adopted
+    - admin
+  leaver_action: disable        # disable | delete  (what to do when a user leaves scope)
+  dry_run: false

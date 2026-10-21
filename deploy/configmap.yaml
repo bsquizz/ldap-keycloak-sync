@@ -1,0 +1,35 @@
+# Non-secret config. Fill in your real url/realm/search_base/user_filter before applying.
+# Secret VALUES come from the Secret (envFrom in the CronJob) via ${VAR} expansion.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ldap-keycloak-sync
+data:
+  config.yaml: |
+    keycloak:
+      url: https://keycloak.example.com
+      realm: my-realm
+      client_id: ldap-sync
+      client_secret: ${KEYCLOAK_CLIENT_SECRET}
+      verify: true
+    ldap:
+      url: ldaps://ldap.example.com:636
+      search_base: ou=users,dc=example,dc=com
+      user_filter: "(&(uid=*)(memberOf=cn=app-users,ou=groups,dc=example,dc=com))"
+      auth:
+        method: simple
+        bind_dn: ${LDAP_BIND_DN}
+        bind_password: ${LDAP_BIND_PASSWORD}
+      verify: true
+    sync:
+      mappings:
+        uid: username
+        givenName: firstName
+        sn: lastName
+        mail: email
+        rhatUUID: rhatUUID
+      email_verified: true
+      exclude_users:
+        - admin
+      leaver_action: disable
+      dry_run: false

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ldap-keycloak-sync"
+version = "0.1.0"
+description = "Push-based sync of LDAP user data into a Keycloak realm via the Admin REST API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "bsquizz" }]
+dependencies = [
+    "python-keycloak>=4",
+    "ldap3>=2.9",
+    "PyYAML>=6",
+]
+
+[project.optional-dependencies]
+gssapi = ["gssapi>=1.8"]        # for ldap.auth.method: gssapi (needs system krb5 libs)
+dev = ["pytest>=7"]
+
+[project.scripts]
+ldap-keycloak-sync = "ldap_keycloak_sync.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/bsquizz/ldap-keycloak-sync"
+
+[tool.setuptools]
+packages = ["ldap_keycloak_sync"]
