@@ -60,6 +60,9 @@ Copy [`config.example.yaml`](config.example.yaml) and edit. Key points:
   (e.g. `memberOf=...`). `(uid=*)` imports everyone the bind account can see — for a large
   corporate directory that means tens of thousands of users, a heavy initial import, and
   possible server-side search-size limits; scope it unless you really mean everyone.
+  Also note that a directory's "person" object class often also covers service/shared/functional
+  accounts — add a discriminating attribute (e.g. a person-type attribute that only real people
+  carry) to the filter if you want to exclude them.
 - **`leaver_action`**: `disable` (default, reversible) or `delete` (irreversible).
 
 ### Keycloak auth (least privilege)
