@@ -39,9 +39,15 @@ On each run it reconciles the realm against an LDAP search:
 
 ```bash
 pip install .
-# for ldap.auth.method: gssapi (needs system krb5 libs, e.g. `dnf install krb5-devel`):
+# For ldap.auth.method: gssapi, first install the Kerberos build prerequisite, then the extra:
+#   Fedora/RHEL:  sudo dnf install krb5-devel
+#   Debian/Ubuntu: sudo apt install libkrb5-dev
 pip install '.[gssapi]'
 ```
+
+> **Prerequisite for GSSAPI:** the `gssapi` Python package compiles against system Kerberos
+> headers, so `krb5-devel` (Fedora/RHEL) / `libkrb5-dev` (Debian) must be installed first. The
+> default simple-bind path needs none of this.
 
 ## Configuration
 
@@ -71,6 +77,7 @@ If `ldapsearch` already works on your machine (you hold a Kerberos ticket), use 
 bind credentials or keytab needed:
 
 ```bash
+sudo dnf install krb5-devel          # build prerequisite for the gssapi extra (see Install)
 pip install -e '.[gssapi]'
 # in config.yaml: ldap.auth.method: gssapi   (omit bind_dn/bind_password)
 export KEYCLOAK_CLIENT_SECRET=...            # or KEYCLOAK_USERNAME / KEYCLOAK_PASSWORD
