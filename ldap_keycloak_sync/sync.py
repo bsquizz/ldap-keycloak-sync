@@ -271,6 +271,11 @@ def run(cfg: dict, dry_run: bool = False) -> int:
     current = fetch_keycloak_users(admin)
     ldap_conn = connect_ldap(cfg)
     desired = fetch_ldap_users(ldap_conn, cfg)
+    if not desired:
+        # Guard against a bad filter / LDAP hiccup: with an empty desired set every managed
+        # user looks like a leaver, which under leaver_action=delete would wipe the realm.
+        sys.exit("FATAL: LDAP returned 0 in-scope users; refusing to sync. "
+                 "Check ldap.user_filter and connectivity.")
 
     plan = partition(desired, current, cfg["sync"])
     log.info(
