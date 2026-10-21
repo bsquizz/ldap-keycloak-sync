@@ -197,11 +197,13 @@ def fetch_keycloak_users(admin, page: int = 500) -> list:
 
 
 def connect_ldap(cfg: dict):
-    from ldap3 import ALL, Connection, Server, Tls
+    from ldap3 import NONE, Connection, Server, Tls
 
     lc = cfg["ldap"]
     tls = Tls(validate=ssl.CERT_REQUIRED if lc.get("verify", True) else ssl.CERT_NONE)
-    server = Server(lc["url"], use_ssl=lc["url"].lower().startswith("ldaps"), tls=tls, get_info=ALL)
+    # get_info=NONE: skip the heavy server schema fetch on connect. We only do searches, and
+    # the schema fetch can be terminated by the server (esp. with concurrent binds).
+    server = Server(lc["url"], use_ssl=lc["url"].lower().startswith("ldaps"), tls=tls, get_info=NONE)
     if lc["auth"]["method"] == "gssapi":
         from ldap3 import GSSAPI, SASL
         return Connection(server, authentication=SASL, sasl_mechanism=GSSAPI, auto_bind=True)
